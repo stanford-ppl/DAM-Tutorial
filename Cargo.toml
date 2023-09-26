@@ -1,0 +1,13 @@
+[package]
+name = "dam_tutorial"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dam-rs = { git = "https://github.com/stanford-ppl/DAM-RS.git", branch = "dev" }
+dam-core = { git = "https://github.com/stanford-ppl/DAM-RS.git", branch = "dev" }
+dam-macros = { git = "https://github.com/stanford-ppl/DAM-RS.git", branch = "dev" }
+itertools = "0.11.0"
+ndarray = "0.15.6"
