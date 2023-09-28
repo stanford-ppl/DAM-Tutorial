@@ -4,43 +4,73 @@ use dam_rs::{
     context::Context,
     types::{Cleanable, DAMType},
 };
-use ndarray::{Array1, Array2};
+use ndarray::prelude::*;
 
 #[time_managed]
 #[identifiable]
-pub struct Matmul<T: Clone> {
+pub struct GEMV<T: Clone> {
     weights: Array2<T>,
     biases: Array1<T>,
     input: Receiver<T>,
     output: Sender<T>,
 }
 
-impl<T: Clone> Matmul<T> {
+impl<T: DAMType> GEMV<T>
+where
+    T: ndarray::LinalgScalar,
+{
     pub fn new(
         input: Receiver<T>,
         output: Sender<T>,
         weights: Array2<T>,
         biases: Array1<T>,
     ) -> Self {
-        Self {
+        let result = Self {
             input,
             output,
             weights,
             biases,
             time: Default::default(),
             identifier: Default::default(),
-        }
+        };
+        result.input.attach_receiver(&result);
+        result.output.attach_sender(&result);
+        result
     }
 }
 
-impl<T> Context for Matmul<T>
+impl<T> Context for GEMV<T>
 where
-    T: DAMType,
+    T: DAMType + ndarray::LinalgScalar,
 {
     fn init(&mut self) {} // Nothing to do here.
 
     fn run(&mut self) {
-        todo!("Implement your Matrix Multiply Block here!")
+        let input_size = self.weights.ncols();
+        let output_size = self.weights.nrows();
+        loop {
+            let mut input_vec = Vec::with_capacity(input_size);
+            for _ in 0..input_size {
+                match self.input.dequeue(&mut self.time) {
+                    dam_rs::channel::DequeueResult::Something(data) => {
+                        input_vec.push(data.data);
+                    }
+                    dam_rs::channel::DequeueResult::Closed => return,
+                }
+                self.time.incr_cycles(1);
+            }
+            let input_vec = ndarray::Array::from_vec(input_vec);
+            let output = self.weights.dot(&input_vec);
+            for i in 0..output_size {
+                let cur_time = self.time.tick();
+                self.output
+                    .enqueue(
+                        &mut self.time,
+                        ChannelElement::new(cur_time + 1 + (i as u64), output[i] + self.biases[i]),
+                    )
+                    .unwrap();
+            }
+        }
     }
 
     #[cleanup(time_managed)]
@@ -58,15 +88,19 @@ pub struct Activation<T: Clone> {
     func: fn(T) -> T,
 }
 
-impl<T: Clone> Activation<T> {
+impl<T: DAMType> Activation<T> {
     pub fn new(input: Receiver<T>, output: Sender<T>, func: fn(T) -> T) -> Self {
-        Self {
+        let result = Self {
             input,
             output,
             func,
             time: Default::default(),
             identifier: Default::default(),
-        }
+        };
+
+        result.input.attach_receiver(&result);
+        result.output.attach_sender(&result);
+        result
     }
 }
 
@@ -76,15 +110,14 @@ impl<T: DAMType> Context for Activation<T> {
     fn run(&mut self) {
         loop {
             match self.input.dequeue(&mut self.time) {
-                dam_rs::channel::Recv::Something(data) => self
+                dam_rs::channel::DequeueResult::Something(data) => self
                     .output
                     .enqueue(
                         &mut self.time,
                         ChannelElement::new(data.time + 1, (self.func)(data.data)),
                     )
                     .unwrap(),
-                dam_rs::channel::Recv::Closed => return,
-                _ => unreachable!(),
+                dam_rs::channel::DequeueResult::Closed => return,
             }
         }
     }
