@@ -1,13 +1,7 @@
-use dam_macros::{cleanup, identifiable, time_managed};
-use dam_rs::{
-    channel::{ChannelElement, Receiver, Sender},
-    context::Context,
-    types::{Cleanable, DAMType},
-};
+use dam::context_tools::*;
 use ndarray::prelude::*;
 
-#[time_managed]
-#[identifiable]
+#[context_macro]
 pub struct GEMV<T: Clone> {
     weights: Array2<T>,
     biases: Array1<T>,
@@ -30,8 +24,7 @@ where
             output,
             weights,
             biases,
-            time: Default::default(),
-            identifier: Default::default(),
+            context_info: Default::default(),
         };
         result.input.attach_receiver(&result);
         result.output.attach_sender(&result);
@@ -51,11 +44,11 @@ where
         loop {
             let mut input_vec = Vec::with_capacity(input_size);
             for _ in 0..input_size {
-                match self.input.dequeue(&mut self.time) {
-                    dam_rs::channel::DequeueResult::Something(data) => {
+                match self.input.dequeue(&self.time) {
+                    Ok(data) => {
                         input_vec.push(data.data);
                     }
-                    dam_rs::channel::DequeueResult::Closed => return,
+                    Err(_) => return,
                 }
                 self.time.incr_cycles(1);
             }
@@ -65,23 +58,16 @@ where
                 let cur_time = self.time.tick();
                 self.output
                     .enqueue(
-                        &mut self.time,
+                        &self.time,
                         ChannelElement::new(cur_time + 1 + (i as u64), output[i] + self.biases[i]),
                     )
                     .unwrap();
             }
         }
     }
-
-    #[cleanup(time_managed)]
-    fn cleanup(&mut self) {
-        self.input.cleanup();
-        self.output.cleanup();
-    }
 }
 
-#[time_managed]
-#[identifiable]
+#[context_macro]
 pub struct Activation<T: Clone> {
     input: Receiver<T>,
     output: Sender<T>,
@@ -94,8 +80,7 @@ impl<T: DAMType> Activation<T> {
             input,
             output,
             func,
-            time: Default::default(),
-            identifier: Default::default(),
+            context_info: Default::default(),
         };
 
         result.input.attach_receiver(&result);
@@ -109,22 +94,16 @@ impl<T: DAMType> Context for Activation<T> {
 
     fn run(&mut self) {
         loop {
-            match self.input.dequeue(&mut self.time) {
-                dam_rs::channel::DequeueResult::Something(data) => self
+            match self.input.dequeue(&self.time) {
+                Ok(data) => self
                     .output
                     .enqueue(
-                        &mut self.time,
+                        &self.time,
                         ChannelElement::new(data.time + 1, (self.func)(data.data)),
                     )
                     .unwrap(),
-                dam_rs::channel::DequeueResult::Closed => return,
+                Err(_) => return,
             }
         }
-    }
-
-    #[cleanup(time_managed)]
-    fn cleanup(&mut self) {
-        self.input.cleanup();
-        self.output.cleanup();
     }
 }

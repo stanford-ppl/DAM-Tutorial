@@ -1,11 +1,8 @@
-use dam_rs::{
-    context::{
-        checker_context::CheckerContext, consumer_context::PrinterContext,
-        generator_context::GeneratorContext,
-    },
-    simulation::Program,
+use dam::{
+    simulation::{InitializationOptionsBuilder, ProgramBuilder, RunOptions},
+    utility_contexts::*,
 };
-use dam_tutorial::blocks::{Activation, GEMV};
+use dam_tutorial::blocks::*;
 
 // Fill this in!
 fn relu(input: f64) -> f64 {
@@ -22,7 +19,7 @@ fn matmul_relu_test() {
 
     let activation_func = relu;
 
-    let mut ctx = Program::default();
+    let mut ctx = ProgramBuilder::default();
 
     let input_vec = {
         // Code to generate input data.
@@ -94,6 +91,14 @@ fn matmul_relu_test() {
         ))
     }
 
-    ctx.init();
-    ctx.run();
+    let executed = ctx
+        .initialize(
+            InitializationOptionsBuilder::default()
+                .run_flavor_inference(true)
+                .build()
+                .unwrap(),
+        )
+        .unwrap()
+        .run(RunOptions::default());
+    println!("Took {:?} cycles", executed.elapsed_cycles());
 }
