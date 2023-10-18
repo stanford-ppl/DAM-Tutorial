@@ -87,6 +87,8 @@ fn matmul_relu_test() {
         ctx.add_child(PrinterContext::new(act_to_output_recv));
         println!("Reference: {:?}", reference_output);
     } else {
+        // Construct a checker context from the reference outputs.
+        // Due to data organization, the reference_output will be transposed from the received output.
         ctx.add_child(CheckerContext::new(
             move || reference_output.t().to_owned().into_iter(),
             act_to_output_recv,
