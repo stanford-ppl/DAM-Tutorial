@@ -7,6 +7,7 @@ pub struct GEMV<T: Clone> {
     biases: Array1<T>,
     input: Receiver<T>,
     output: Sender<T>,
+    initiation_interval: u64,
 }
 
 impl<T: DAMType> GEMV<T>
@@ -18,12 +19,14 @@ where
         output: Sender<T>,
         weights: Array2<T>,
         biases: Array1<T>,
+        initiation_interval: u64,
     ) -> Self {
         let result = Self {
             input,
             output,
             weights,
             biases,
+            initiation_interval,
             context_info: Default::default(),
         };
         result.input.attach_receiver(&result);
@@ -63,6 +66,7 @@ where
                     )
                     .unwrap();
             }
+            self.time.incr_cycles(self.initiation_interval)
         }
     }
 }
@@ -71,14 +75,21 @@ where
 pub struct Activation<T: Clone> {
     input: Receiver<T>,
     output: Sender<T>,
+    initiation_interval: u64,
     func: fn(T) -> T,
 }
 
 impl<T: DAMType> Activation<T> {
-    pub fn new(input: Receiver<T>, output: Sender<T>, func: fn(T) -> T) -> Self {
+    pub fn new(
+        input: Receiver<T>,
+        output: Sender<T>,
+        initiation_interval: u64,
+        func: fn(T) -> T,
+    ) -> Self {
         let result = Self {
             input,
             output,
+            initiation_interval,
             func,
             context_info: Default::default(),
         };
@@ -104,6 +115,7 @@ impl<T: DAMType> Context for Activation<T> {
                     .unwrap(),
                 Err(_) => return,
             }
+            self.time.incr_cycles(self.initiation_interval)
         }
     }
 }

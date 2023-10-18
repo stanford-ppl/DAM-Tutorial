@@ -65,6 +65,7 @@ fn matmul_relu_test() {
         mm_to_act_send,
         weights.clone(),
         biases,
+        1,
     ));
 
     let (act_to_output_send, act_to_output_recv) = ctx.bounded(1024);
@@ -72,6 +73,7 @@ fn matmul_relu_test() {
     ctx.add_child(Activation::new(
         mm_to_act_recv,
         act_to_output_send,
+        1,
         activation_func,
     ));
 
