@@ -17,6 +17,7 @@ fn matmul_relu_test() {
     const NUM_FEATURES: usize = 1024;
     const NUM_OUTPUTS: usize = 24;
 
+    // Can substitute any function here, not just the relu defined above
     let activation_func = relu;
 
     let mut ctx = ProgramBuilder::default();
@@ -47,6 +48,7 @@ fn matmul_relu_test() {
         input_to_mm_send,
     ));
 
+    // Channels are split into sender/receiver sides for cleanliness and safety
     let (mm_to_act_send, mm_to_act_recv) = ctx.bounded(1024);
 
     // Fill a matrix with all 0.5, halving all inputs
@@ -58,6 +60,8 @@ fn matmul_relu_test() {
         bias_vec.push((output_id as f64) - 2.0);
     }
     let biases = ndarray::Array::from_vec(bias_vec);
+
+    // Broadcast the biases for later.
     let bias_matrix = biases.clone().into_shape((NUM_OUTPUTS, 1)).unwrap();
 
     ctx.add_child(GEMV::new(
@@ -77,10 +81,13 @@ fn matmul_relu_test() {
         activation_func,
     ));
 
+    // Multiply weights by the input matrix (batch x features)
     let mut reference_output = weights.dot(&input_mat.t());
 
+    // Add the broadcasted biases
     reference_output += &bias_matrix;
 
+    // Apply the activation function
     reference_output.mapv_inplace(activation_func);
 
     if PRINT_INSTEAD_OF_CHECK {
