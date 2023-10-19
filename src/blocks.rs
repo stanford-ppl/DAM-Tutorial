@@ -1,6 +1,7 @@
 use dam::context_tools::*;
 use ndarray::prelude::*;
 
+/// A simple definition of a GEMV operation
 #[context_macro]
 pub struct GEMV<T: Clone> {
     weights: Array2<T>,
@@ -39,24 +40,30 @@ impl<T> Context for GEMV<T>
 where
     T: DAMType + ndarray::LinalgScalar,
 {
-    fn init(&mut self) {} // Nothing to do here.
-
     fn run(&mut self) {
         let input_size = self.weights.ncols();
         let output_size = self.weights.nrows();
         loop {
-            let mut input_vec = Vec::with_capacity(input_size);
-            for _ in 0..input_size {
+            let mut input_buffer = Vec::with_capacity(input_size);
+            // Dequeue repeatedly into the input_vec buffer, at the rate of at most 1 per cycle.
+            for i in 0..input_size {
                 match self.input.dequeue(&self.time) {
                     Ok(data) => {
-                        input_vec.push(data.data);
+                        input_buffer.push(data.data);
                     }
-                    Err(_) => return,
+                    // Only legal to break if we don't have anything in the buffer
+                    // Otherwise, highly likely to have a book-keeping error.
+                    Err(_) if i == 0 => return,
+                    Err(_) => panic!("Premature exit encountered!"),
                 }
                 self.time.incr_cycles(1);
             }
-            let input_vec = ndarray::Array::from_vec(input_vec);
+
+            // After reading the vector, we then calculate all of the values
+            let input_vec = ndarray::Array::from_vec(input_buffer);
             let output = self.weights.dot(&input_vec);
+
+            // Output the values at the rate of at most 1/cycle, accounting for backpressure.
             for i in 0..output_size {
                 let cur_time = self.time.tick();
                 self.output
@@ -100,9 +107,8 @@ impl<T: DAMType> Activation<T> {
     }
 }
 
+/// A Simple Context that just applies a function to its inputs and passes it on.
 impl<T: DAMType> Context for Activation<T> {
-    fn init(&mut self) {} // Nothing to do here.
-
     fn run(&mut self) {
         loop {
             match self.input.dequeue(&self.time) {
